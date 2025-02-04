@@ -1,6 +1,8 @@
+// SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
 contract DonationManagement {
+    // Estructura de Donación
     struct Donation {
         address donor;
         uint256 amount;
@@ -9,77 +11,85 @@ contract DonationManagement {
         bool valid;
     }
 
+    // Variables de estado
     address public owner;
-    mapping(address => Donation[]) private donorDonations;
-    Donation[] private donations;
+    Donation[] public donations;
     uint256 public totalDonations;
     uint256 public processedDonationsCount;
 
+    // Eventos
     event DonationReceived(address indexed donor, uint256 amount);
-    event DonationProcessed(address indexed donor, uint256 amount);
+    event DonationProcessed(uint256 indexed donationIndex);
 
+    // Modificador para restringir acceso al propietario
     modifier onlyOwner() {
         require(msg.sender == owner, "Solo el propietario puede realizar esta accion");
         _;
     }
 
-    modifier validDonation() {
-        require(msg.value > 0, "La donacion debe ser mayor a 0");
-        _;
-    }
-
+    // Constructor
     constructor() {
         owner = msg.sender;
     }
 
-    function donate() public payable validDonation {
+    // Función de donación
+    receive() external payable {
+        _recordDonation(msg.sender, msg.value);
+    }
+
+    // Función interna para registrar donaciones
+    function _recordDonation(address donor, uint256 amount) internal {
+        require(amount > 0, "Donacion debe ser mayor a cero");
+
         Donation memory newDonation = Donation({
-            donor: msg.sender,
-            amount: msg.value,
+            donor: donor,
+            amount: amount,
             timestamp: block.timestamp,
-            processed: false,
+            processed: false,  // Cambiado a false
             valid: true
         });
 
-        donorDonations[msg.sender].push(newDonation);
         donations.push(newDonation);
-
-        emit DonationReceived(msg.sender, msg.value);
-
-        _processDonation(donations.length - 1);
+        emit DonationReceived(donor, amount);
     }
 
-    function _processDonation(uint256 index) internal {
-        require(index < donations.length, "Indice de donacion invalido");
-        require(!donations[index].processed, "Donacion ya procesada");
+    // Nueva función para procesar donaciones manualmente
+    function processDonation(uint256 donationIndex) public onlyOwner {
+        require(donationIndex < donations.length, "Indice de donacion invalido");
+        require(!donations[donationIndex].processed, "Donacion ya procesada");
 
-        Donation storage donation = donations[index];
+        Donation storage donation = donations[donationIndex];
         
-        if (donation.valid && donation.amount > 0) {
-            (bool success, ) = owner.call{value: donation.amount}("");
-            require(success, "Transferencia fallida");
+        // Transferir fondos al propietario
+        (bool success, ) = owner.call{value: donation.amount}("");
+        require(success, "Transferencia fallida");
 
-            donation.processed = true;
-            processedDonationsCount++;
-            totalDonations += donation.amount;
+        // Marcar como procesada
+        donation.processed = true;
+        processedDonationsCount++;
+        totalDonations += donation.amount;
 
-            emit DonationProcessed(donation.donor, donation.amount);
-        }
+        emit DonationProcessed(donationIndex);
     }
 
+    // Función para obtener donaciones de un donante
     function getDonorDonations(address donor) public view returns (Donation[] memory) {
-        return donorDonations[donor];
-    }
+        Donation[] memory donorDonations = new Donation[](donations.length);
+        uint256 count = 0;
 
-    function getAllDonations() public view returns (Donation[] memory) {
-        return donations;
-    }
+        for (uint256 i = 0; i < donations.length; i++) {
+            if (donations[i].donor == donor) {
+                donorDonations[count] = donations[i];
+                count++;
+            }
+        }
 
-    receive() external payable {
-        donate();
-    }
+        // Redimensionar el array
+        Donation[] memory result = new Donation[](count);
+        for (uint256 i = 0; i < count; i++) {
+            result[i] = donorDonations[i];
+        }
 
-    fallback() external payable {
-        donate();
+        return result;
     }
 }

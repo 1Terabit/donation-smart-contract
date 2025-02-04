@@ -1,4 +1,3 @@
-// test/DonationManagement.test.js
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
@@ -23,6 +22,7 @@ describe("DonationManagement", function () {
     const donations = await donationContract.getDonorDonations(donor1.address);
     expect(donations.length).to.equal(1);
     expect(donations[0].amount).to.equal(donationAmount);
+    expect(donations[0].processed).to.be.false;
   });
 
   it("Solo el propietario puede procesar donaciones", async function () {
@@ -32,8 +32,17 @@ describe("DonationManagement", function () {
       value: donationAmount
     });
 
+    // Intentar procesar por un no propietario debe fallar
     await expect(
       donationContract.connect(donor2).processDonation(0)
     ).to.be.revertedWith("Solo el propietario puede realizar esta accion");
+
+    // El propietario puede procesar
+    await donationContract.connect(owner).processDonation(0);
+
+    // No se puede procesar dos veces
+    await expect(
+      donationContract.connect(owner).processDonation(0)
+    ).to.be.revertedWith("Donacion ya procesada");
   });
 });
